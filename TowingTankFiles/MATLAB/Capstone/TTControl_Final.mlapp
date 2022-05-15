@@ -1,0 +1,391 @@
+classdef TTControl < matlab.apps.AppBase
+
+    % Properties that correspond to app components
+    properties (Access = public)
+        UIFigure                 matlab.ui.Figure
+        TextArea                 matlab.ui.control.TextArea
+        ResetButton              matlab.ui.control.Button
+        StopExperimentButton     matlab.ui.control.Button
+        StartanExperimentButton  matlab.ui.control.Button
+    end
+
+    % Callbacks that handle component events
+    methods (Access = private)
+
+        % Button pushed function: StartanExperimentButton
+        function StartanExperimentButtonPushed(app, event)
+            %initialization
+            global forceDataCount;
+
+            global speed;
+            global waveform;
+            global distance;
+            
+            global traversalCount;
+            forceDataCount = 0;
+            speed= 50;
+
+
+
+            distance = 0;
+
+
+            expInput();
+            csvInitialisation(speed,waveform,distance);
+            exptPrep();
+            csvFinalisation();
+            fileStorage();
+            
+            %%
+            function expInput()
+
+                % dialog box for user input
+                prompt = 'Enter waveform desired [eg. 3./t.^2.,sin(t)]:';
+                'Enter the distance to be traversed (cm): ';
+                'Enter numeric value of motor speed (mm/min):'};
+                dlgtitle = 'Experiment variables';
+                dims = [1 50];
+                definput = '3*t.^2','223','50'}; % default values
+                answer = inputdlg(prompt,dlgtitle,dims,definput);
+                waveform = answer1};
+
+                x_distance = answer2};
+                numCheck1 = isnumeric(x_distance);
+                while (true)
+                    if (x_distance>223.0 || x_distance<0.0 || numCheck1 == false)
+                        errordlg("Wrong distance input, Max = 223.0");
+                        pause(3)
+                        close(app.UIFigure);
+                        open(app.UIFigure);
+
+                    else
+                        break;
+                    end
+                end
+                speed = answer3};
+                numCheck2 = isnumeric(speed);
+                while (true)
+                    if (speed>50.0 || speed<=0.0 || numCheck2 == false)
+                        errordlg("Wrong speed input, Max speed = 50.0");
+                        pause(3)
+                        close;
+                        close;
+                        break;
+                    else
+                        break;
+                    end
+                end
+            end
+            %%
+            function fileStorage()
+                i = 0;
+
+                while (i<40)
+                    csvwrite('exptResults',csvread('arduinoResults.csv',i,0),3,i+5);
+                    csvwrite('exptResults',csvread('arduinoResults.csv',i,1),4,i+5);
+                end
+
+                % dialog box for user input
+                prompt = {'Enter your name: '};
+                dlgtitle = 'File Storage';
+                dims = [1 50];
+                definput = {'Name'}; % default values
+                fileStored = inputdlg(prompt,dlgtitle,dims,definput);
+                name = fileStored{1};
+                waveform = fileStored{2};
+
+                metadata = "Name"
+                csvwrite('expResults',metadata,2,0);
+                csvwrite('expResults',name,3,0);
+                
+                %Rename folder
+                mkdir (name);
+                movefile newExp (name);
+                msgbox('Experiment done! Check folder for results');
+            end
+            %%
+            function exptPrep(speed)
+                answer2 = questdlg('Are you sure you want to continue?', ...
+                    'Confirmation dialog', ...
+                    'Yes','No thank you','No thank you'); % last string in method is the default button
+                % Handle response
+                switch answer2
+                    case 'Yes'
+                        msgbox("Initializing (5s)...");
+                        pause(5);
+                        msgbox("Starting Experiment...");
+                        %startExperiment (waveform,x_distance,speed);
+
+                    case 'No'
+                        pause(2);
+                        msgbox("No experiment today then");
+                        close(app.UIFigure);
+                        return;
+                end
+                %%
+                function csvInitialisation(speed,waveform,distance)
+                    experimentTime  = (50/speed *14);
+                    timestamp  = linspace(0,experimentTime,experimentTime);
+                    mkdir newExp;
+                    cd newExp;
+                    metadata = ["Speed","Waveform","Distance"];
+                    i = 0; %column position
+                    while i<3
+                        csvwrite('expResults',metadata(i),i,0);
+                        i = i +1;
+                    end
+                    csvwrite('expResults',speed,0,1);
+                    csvwrite('expResults',waveform,1,1);
+                    csvwrite('expResults',distance,2,1);
+
+                    i = i+2; % moves headings to fourth row
+                    dataHeadings = ["Timestamp","x","y","Fx","Fy"];
+                    j = 0;
+                    while j < 5
+                        csvwrite('expResults',dataHeadings(j),i,j); % sets headings below
+                        j = j+1;
+                    end
+
+                    pause(experimentTime)
+                end
+                %%
+                function startExperiment()
+                    %t=linspace(0,10,N); %add N to generate that number of points
+
+                    Tank_width_2=40; %cm
+                    Tank_width_1=0;%cm
+                    Tank_length=240;
+
+
+                    t=Tank_width_1:((50/speed)*0.4):Tank_width_2;
+                    y= waveform;
+                    beyond=find(abs(y)<Tank_length);
+                    new_y=y(beyond);
+                    new_t=t(beyond);
+
+                    plot(t,y)
+
+                    title('Curve');
+                    %G90 G28 X0 Y0 homing parameters
+                    fileID = fopen('new.gcode','w') ;%enter the name of the created file
+                    fprintf(fileID,'%s\n','G21 G90 F90');%G21 for metric, G90 for absolute movement from datum,
+
+                    %program
+                    fprintf(fileID,'%s %c%.2f %c%.2f %s\n','G01','X',(Tank_width_2+Tank_width_1)/2,'Y',0, 'F10'); %Start program at this position, but slowly in a straight line
+                    for i=1:length(beyond)
+                        fprintf(fileID,'%s %c%.2f %c%.2f\n','G01','X',new_t(i),'Y',new_y(i));
+                    end
+                    fprintf(fileID,'%s\n','G90 G28 F40');
+
+                    %Arduino Implementation
+                    #include <DFRobot_HX711.h>;
+                    %servo driver
+                    readDigitalPin(2, OUTPUT); % DIR +
+                    readDigitalPin(3, OUTPUT); % DIR -
+                    readDigitalPin(4, OUTPUT); % PUL +
+
+                    %default
+                    y_speed = 0.055;
+                    maxLength_yStage = 500; %mm
+                    x_speed  = 30.0; % mm/min
+
+                    %Load Cell
+                    readDigitalPin(2, OUTPUT); % DATA
+                    readDigitalPin(3, OUTPUT); % SCK/CLK
+                    gravity = 10.0;
+                    DFRobot_HX711 MyScale(A1, A2);
+                    %calibrate weight
+                    calibrateLC();
+
+                    % variables
+                    force  = 0; % N
+                    timeStamped = 0; % seconds
+
+                    writeDigitalPin(2, HIGH); %Allows the motor to move forward (test)
+                    writeDigitalPin(3, LOW);
+
+                    }
+
+                    function loop()
+
+                        % this will move the motor using pulses.
+                        motion_yAxis(speed);
+                        motion_xAxis(speed);
+
+                    end
+
+                    function motion_xAxis(speed)
+                        if (x_speed == 0 || x_speed > 35)
+                            writeDigitalPin(4, LOW);
+                        else
+                            % length in mm
+                            protectedLength = 240;
+                            traversalCount = round((speed / 35) * protectedLength)); % max speed of linear stage in x axis is 35 mm/min
+                            delayed = round(60 * x_speed / 35);                        
+                            if (traversalCount <= protectedLength)
+                                % step motor
+                                writeDigitalPin(4, LOW);
+                                writeDigitalPin(4, HIGH);
+                                delmayMicroseconds(delayed);
+                                traversalCount++;
+                                force = MyScale.readWeight() * gravity;                         
+                                delay(1000 - delayed);
+                            else
+                                writeDigitalPin(4, LOW);
+                                writeDigitalPin(3, HIGH); %Allows the motor to move in reverse
+                                writeDigitalPin(2, LOW);
+
+                                if (traversalCount ~= 0)
+                                    while (traversalCount > 0)
+                                        writeDigitalPin(4, LOW);
+                                        writeDigitalPin(4, HIGH);
+                                        delay(delayed);
+                                        traversalCount--;
+                                    end
+                                end
+                            end
+                        end
+
+                        function calibrateLC()
+                            % pins A1 and A2 are initialised as scale
+                            % Set the calibration
+                            MyScale.setCalibration(1992);
+                        end
+                        function determineForce()
+                            gravity = 10;
+                            Serial.print(MyScale.readWeight()*gravity, 1);
+                            Serial.print(" N");
+                            delay(delayed);
+                        end
+
+                        
+
+
+                        end
+        end
+
+        % Button pushed function: ResetButton
+        function ResetButtonPushed(app, event)
+            
+            n = 0;
+            while n <10
+                n = n+1;
+            end
+
+            resetCarriage();
+
+            answer2 = questdlg('Carriage reset. Select OK to exit', ...
+                'Reset Confirmation dialog', ...
+                'Yes','Yes');
+            %%
+            function resetCarriage()
+                            writeDigitalPin(4, LOW);
+
+                            writeDigitalPin(3, HIGH); %Allows the motor to move in reverse
+                            writeDigitalPin(2, LOW);
+
+                            if (traversalCount ~= 0)
+                                while (traversalCount > 0)
+                                    writeDigitalPin(4, LOW);
+                                    writeDigitalPin(4, HIGH);
+                                    delay(delayed);
+                                    traversalCount = traversalCount-1;
+                                end
+                            end
+                        end
+        end
+
+        % Button pushed function: StopExperimentButton
+        function StopExperimentButtonPushed(app, event)
+                    resetCarriage();
+                    msgbox('Experiment Ended')
+                    return;
+            
+            function resetCarriage()
+                
+                            writeDigitalPin(4, LOW);
+                            writeDigitalPin(3, HIGH); %Allows the motor to move in reverse
+                            writeDigitalPin(2, LOW);
+
+                            if (traversalCount ~= 0)
+                                while (traversalCount > 0)
+                                    writeDigitalPin(4, LOW);
+                                    writeDigitalPin(4, HIGH);
+                                    delay(delayed);
+                                    traversalCount = traversalCount-1;
+                                end
+                            end
+                        end
+
+        end
+    end
+
+    % Component initialization
+    methods (Access = private)
+
+        % Create UIFigure and components
+        function createComponents(app)
+
+            % Create UIFigure and hide until all components are created
+            app.UIFigure = uifigure('Visible', 'off');
+            app.UIFigure.Position = [100 100 640 480];
+            app.UIFigure.Name = 'MATLAB App';
+
+            % Create StartanExperimentButton
+            app.StartanExperimentButton = uibutton(app.UIFigure, 'push');
+            app.StartanExperimentButton.ButtonPushedFcn = createCallbackFcn(app, @StartanExperimentButtonPushed, true);
+            app.StartanExperimentButton.BackgroundColor = [0.1529 0.8 0.1843];
+            app.StartanExperimentButton.Position = [55 265 208 89];
+            app.StartanExperimentButton.Text = 'Start an Experiment';
+
+            % Create StopExperimentButton
+            app.StopExperimentButton = uibutton(app.UIFigure, 'push');
+            app.StopExperimentButton.ButtonPushedFcn = createCallbackFcn(app, @StopExperimentButtonPushed, true);
+            app.StopExperimentButton.BackgroundColor = [1 0 0];
+            app.StopExperimentButton.Position = [344 265 215 89];
+            app.StopExperimentButton.Text = 'Stop Experiment';
+
+            % Create ResetButton
+            app.ResetButton = uibutton(app.UIFigure, 'push');
+            app.ResetButton.ButtonPushedFcn = createCallbackFcn(app, @ResetButtonPushed, true);
+            app.ResetButton.Position = [191 111 215 89];
+            app.ResetButton.Text = 'Reset';
+
+            % Create TextArea
+            app.TextArea = uitextarea(app.UIFigure);
+            app.TextArea.Editable = 'off';
+            app.TextArea.HorizontalAlignment = 'center';
+            app.TextArea.FontAngle = 'italic';
+            app.TextArea.Position = [191 424 259 37];
+            app.TextArea.Value = {'TOWING TANK CONTROL INTERFACE'};
+
+            % Show the figure after all components are created
+            app.UIFigure.Visible = 'on';
+        end
+    end
+
+    % App creation and deletion
+    methods (Access = public)
+
+        % Construct app
+        function app = TTControl
+
+            % Create UIFigure and components
+            createComponents(app)
+
+            % Register the app with App Designer
+            registerApp(app, app.UIFigure)
+
+            if nargout == 0
+                clear app
+            end
+        end
+
+        % Code that executes before app deletion
+        function delete(app)
+
+            % Delete UIFigure when app is deleted
+            delete(app.UIFigure)
+        end
+    end
+end

@@ -1,0 +1,19 @@
+
+x = linspace(4.5,219.5,223); % longitudinal axis scaling
+y = sin(x); 
+
+y = rescale(y,0,40); %lateral axis scaling
+n = numel(x); % no. of values in x
+speed = 50;
+
+figure;
+for i = 1:n
+    plot(x(1:i),y(1:i),'-r');
+    
+    xlim([0 223]);
+    ylim([0 40]);
+    title('Carriage motion for waveform')
+    drawnow;
+    pause((speed/50)*1) % motor stepping duration
+end
+
