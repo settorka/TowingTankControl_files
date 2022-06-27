@@ -3,7 +3,7 @@ Final Capstone Project.
 
 MATLAB app controls the towing tank for data collection and experimentation.
 
-Arduino Code allows for running of the linear stage in x-axis only. 
+Arduino Code allows for running of a linear stage in longitudinal (x) and lateral (y) axes. 
 
 MATLAB app (demo) can be used to edit the interface capability only. 
 
